@@ -1,111 +1,114 @@
 # GameToyProtocolBridge (GTPB)
 
-GameToyProtocolBridge (GTPB) 是一个 Buttplug v3 协议桥，让游戏（如 MultiFunPlayer）通过 WebSocket 控制硬件设备。
+**Read this in other languages:** [简体中文](README.zh-CN.md) · [English](README.md) · [日本語](README.ja-JP.md) · [한국어](README.ko-KR.md) · [Deutsch](README.de-DE.md) · [Français](README.fr-FR.md) · [Русский](README.ru-RU.md) · [Español](README.es-ES.md) · [Português (Brasil)](README.pt-BR.md)
 
-**数据链路：**
+GameToyProtocolBridge (GTPB) is a **Buttplug v3 protocol bridge** that lets games (e.g. MultiFunPlayer) control hardware devices via WebSocket.
+
+**Data path:**
+
 ```
-游戏 (MultiFunPlayer 等) → GTPB (ws://127.0.0.1:12345, Buttplug v3)
-  → 解析 / 映射 / 转换 → Intiface Central → 玩具硬件
+Game (MultiFunPlayer, etc.) → GTPB (ws://127.0.0.1:12345, Buttplug v3)
+  → parse / map / transform → Intiface Central → toy hardware
 ```
 
-## 功能
+## Features
 
-- **WebSocket + TCP 双协议代理** — 兼容游戏与 Intiface Central 之间的双向通信
-- **通道映射** — 灵活配置游戏通道到硬件执行器的映射关系
-- **OSR6 六轴模式** — 将游戏输出的 OSR6 六轴指令映射到真实硬件（L0 主行程 / L1 前后 / L2 左右 / R0 扭转 / R1 横滚 / R2 俯仰）
-- **紧急停止** — 一键拦截所有设备指令，发送 StopAllDevices
-- **多语言支持** — 简体中文、English、日本語、Deutsch、Français、Русский、Español、Português (Brasil)、한국어
-- **Profile 管理** — 加载、保存、另存为不同的连接配置和通道映射方案
-- **端口冲突检测** — 启动时自动检查游戏端口与后端端口是否冲突
-- **日志系统** — 系统日志、GameRx/Tx 协议日志、捕获日志
+- **Dual WebSocket + TCP proxy** — bidirectional communication between games and Intiface Central
+- **Channel mapping** — flexible mapping of game channels to hardware actuators
+- **OSR6 six-axis mode** — maps game OSR6 six-axis output to real hardware (L0 stroke / L1 in-out / L2 left-right / R0 twist / R1 roll / R2 pitch)
+- **Emergency stop** — one-click interception of all device commands, sends StopAllDevices
+- **Multi-language support** — Simplified Chinese, English, 日本語, Deutsch, Français, Русский, Español, Português (Brasil), 한국어
+- **Profile management** — load, save, save-as for different connection configs and channel mapping schemes
+- **Port conflict detection** — checks game and backend port conflicts on startup
+- **Logging system** — system log, GameRx/Tx protocol log, capture log
 
-## 快速开始
+## Quick start
 
-### 前置条件
+### Prerequisites
 
-1. 安装并启动 [Intiface Central](https://intiface.com/central/)
-2. 确保你的玩具设备已通过 Intiface Central 连接
+1. Install and start [Intiface Central](https://intiface.com/central/)
+2. Make sure your toy device is connected via Intiface Central
 
-### 运行
+### Run
 
 ```bash
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 
-# GUI 模式
+# GUI mode
 python main.py
 
-# 无界面模式
+# Headless mode
 python main.py --headless
 
-# 指定 Profile 和参数
+# Specify profile and parameters
 python main.py --profile profiles/my.json --listen 0.0.0.0 --ws-port 12345 --backend ws://127.0.0.1:12346
 ```
 
-### 打包 EXE
+### Package as EXE
 
 ```bash
 pip install pyinstaller
 pyinstaller gtpb.spec
 ```
 
-## 端口配置（重要）
+## Port configuration (important)
 
-**两个端口必须不同！**
+**The two ports must be different!**
 
-| 端口 | 默认值 | 说明 |
-|------|--------|------|
-| WebSocket 端口 | 12345 | 游戏连接 GTPB 的端口（游戏端约定，一般不改） |
-| 后端 Intiface | ws://127.0.0.1:12346 | GTPB 连接 Intiface Central 的端口 |
+| Port | Default | Description |
+|------|---------|-------------|
+| WebSocket port | 12345 | Port where games connect to GTPB (game-side convention, usually unchanged) |
+| Backend Intiface | ws://127.0.0.1:12346 | Port where GTPB connects to Intiface Central |
 
-如果两者相同，数据流会陷入死循环。GTPB 启动时会自动检测并警告。
+If they are the same, the data flow loops into an infinite loop. GTPB auto-detects and warns on startup.
 
-解决方法：Intiface Central → Settings → Server → 修改 Listening Port（建议 12346），再把 GTPB 的「后端 Intiface」同步修改。
+Fix: Intiface Central → Settings → Server → change Listening Port (suggest 12346), then update the GTPB "Backend Intiface" accordingly.
 
-## 文件结构
+## File structure
 
 ```
 gtpb-python/
-├── gtpb/                    # 核心模块
+├── gtpb/                    # Core modules
 │   ├── __init__.py
-│   ├── backend.py           # Intiface 后端连接
-│   ├── buttplug.py          # Buttplug v3 协议解析
-│   ├── config.py            # 配置加载（INI + JSON Profile）
-│   ├── gui.py               # Tkinter 图形界面
-│   ├── i18n.py              # 多语言支持
-│   ├── logs.py              # 日志管理器
-│   ├── mapping.py           # 通道映射引擎
-│   ├── models.py            # 数据模型
-│   ├── proxy.py             # 桥接服务核心
-│   ├── safety.py            # 安全机制（紧急停止）
-│   └── transform.py         # 数值变换
-├── profiles/default.json    # 默认 Profile
-├── tests/                   # 单元测试
-├── tools/                   # 开发辅助工具
-├── configsetting.ini        # 出厂配置（不要修改）
-├── main.py                  # 程序入口
-└── requirements.txt         # Python 依赖
+│   ├── backend.py           # Intiface backend connection
+│   ├── buttplug.py          # Buttplug v3 protocol parsing
+│   ├── config.py            # Configuration loading (INI + JSON Profile)
+│   ├── gui.py               # Tkinter GUI
+│   ├── i18n.py              # Multi-language support
+│   ├── logs.py              # Log manager
+│   ├── mapping.py           # Channel mapping engine
+│   ├── models.py            # Data models
+│   ├── proxy.py             # Bridge service core
+│   ├── safety.py            # Safety mechanism (emergency stop)
+│   └── transform.py         # Value transforms
+├── profiles/default.json    # Default profile
+├── tests/                   # Unit tests
+├── tools/                   # Development helper tools
+├── configsetting.ini        # Factory config (do not modify)
+├── main.py                  # Program entry
+└── requirements.txt         # Python dependencies
 ```
 
-## 运行时文件
+## Runtime files
 
-| 文件 | 说明 |
-|------|------|
-| `profiles/*.json` | 你的 Profile（连接设置 + 通道映射） |
-| `.gtpb_settings` | 内部状态（语言、上次加载的 Profile 路径） |
-| `gtpb.log` | 滚动日志（10KB 上限自动裁旧） |
+| File | Description |
+|------|-------------|
+| `profiles/*.json` | Your profiles (connection settings + channel mapping) |
+| `.gtpb_settings` | Internal state (language, last loaded profile path) |
+| `gtpb.log` | Rolling log (10KB cap, auto-trims old entries) |
 
-## 命令行参数
+## Command-line arguments
 
-| 参数 | 说明 |
-|------|------|
-| `--headless` | 无界面模式 |
-| `--profile <path>` | 指定 Profile 文件 |
-| `--listen <addr>` | 监听地址（覆盖 Profile） |
-| `--ws-port <port>` | WebSocket 端口（覆盖 Profile） |
-| `--tcp-port <port>` | TCP 端口（覆盖 Profile） |
-| `--backend <url>` | 后端 Intiface 地址（覆盖 Profile） |
+| Argument | Description |
+|----------|-------------|
+| `--headless` | Headless mode |
+| `--profile <path>` | Specify profile file |
+| `--listen <addr>` | Listen address (overrides profile) |
+| `--ws-port <port>` | WebSocket port (overrides profile) |
+| `--tcp-port <port>` | TCP port (overrides profile) |
+| `--backend <url>` | Backend Intiface address (overrides profile) |
 
-## 许可证
+## License
 
 MIT
