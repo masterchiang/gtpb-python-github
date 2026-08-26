@@ -1,0 +1,101 @@
+{
+  "name": "Default",
+  "game": {
+    "name": ""
+  },
+  "virtualMode": "osr6",
+  "bindings": {
+    "Vibrate:0:0": "L0",
+    "Vibrate:0:1": "L1",
+    "Vibrate:0:2": "L2",
+    "Rotate:0:0": "R0",
+    "Rotate:0:1": "R1",
+    "Linear:0:0": "R2"
+  },
+  "mapping": {
+    "L0": {
+      "enabled": true,
+      "target": "Vibrate",
+      "deviceIndex": -1,
+      "motor": 0,
+      "invert": false,
+      "scale": 1.0,
+      "clamp": true,
+      "deadzone": 0.0,
+      "min": 0.0,
+      "max": 1.0,
+      "midpoint": false
+    },
+    "L1": {
+      "enabled": true,
+      "target": "Vibrate",
+      "deviceIndex": -1,
+      "motor": 0,
+      "invert": false,
+      "scale": 1.0,
+      "clamp": true,
+      "deadzone": 0.0,
+      "min": 0.0,
+      "max": 1.0,
+      "midpoint": false
+    },
+    "L2": {
+      "enabled": true,
+      "target": "Vibrate",
+      "deviceIndex": -1,
+      "motor": 0,
+      "invert": false,
+      "scale": 1.0,
+      "clamp": true,
+      "deadzone": 0.0,
+      "min": 0.0,
+      "max": 1.0,
+      "midpoint": false
+    },
+    "R0": {
+      "enabled": true,
+      "target": "Vibrate",
+      "deviceIndex": -1,
+      "motor": 0,
+      "invert": false,
+      "scale": 1.0,
+      "clamp": true,
+      "deadzone": 0.0,
+      "min": 0.0,
+      "max": 1.0,
+      "midpoint": false
+    },
+    "R1": {
+      "enabled": true,
+      "target": "Rotate",
+      "deviceIndex": -1,
+      "motor": 0,
+      "invert": false,
+      "scale": 1.0,
+      "clamp": true,
+      "deadzone": 0.0,
+      "min": 0.0,
+      "max": 1.0,
+      "midpoint": false
+    },
+    "R2": {
+      "enabled": true,
+      "target": "Vibrate",
+      "deviceIndex": -1,
+      "motor": 0,
+      "invert": false,
+      "scale": 1.0,
+      "clamp": true,
+      "deadzone": 0.0,
+      "min": 0.0,
+      "max": 1.0,
+      "midpoint": false
+    }
+  },
+  "proxy": {
+    "listenAddress": "127.0.0.1",
+    "wsPort": 12345,
+    "tcpPort": 0,
+    "backendUrl": "ws://127.0.0.1:12346"
+  }
+}
