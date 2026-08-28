@@ -291,6 +291,10 @@ class ChannelMapping:
     min: float = 0.0            # 输出范围下限（MFP Output Range Minimum）
     max: float = 1.0            # 输出范围上限（MFP Output Range Maximum）
     midpoint: bool = False      # 位置轴 -> 旋转速度（0.5 中点约定）
+    pulse_enabled: bool = False  # 行程模拟：非 0 信号推进后自动复位（OSR 行程近似）
+    pulse_ms: int = 200          # 复位延迟毫秒（行程周期；每个非 0 信号触发一次往复）
+    delay_ms: int = 0            # 通道信号延时（正=滞后，负=提前；MFP 风格）
+    dedupe: bool = False         # 仅数值变化才转发：相同数值跳过（防游戏重复发同值触发反复）
 
 
 def _default_channels(channels: Optional[Dict[str, tuple]] = None) -> Dict[str, ChannelMapping]:
@@ -380,6 +384,16 @@ class Profile:
                     base.min = float(m.get("min", base.min))
                     base.max = float(m.get("max", base.max))
                     base.midpoint = bool(m.get("midpoint", base.midpoint))
+                    base.pulse_enabled = bool(m.get("pulseEnabled", base.pulse_enabled))
+                    try:
+                        base.pulse_ms = int(m.get("pulseMs", base.pulse_ms))
+                    except (TypeError, ValueError):
+                        pass
+                    try:
+                        base.delay_ms = int(m.get("delayMs", base.delay_ms))
+                    except (TypeError, ValueError):
+                        pass
+                    base.dedupe = bool(m.get("dedupe", base.dedupe))
                 profile.channels[ch_name] = base
         # 连接设置：可选段（兼容老 Profile JSON 没有 proxy 段的情况）
         proxy = data.get("proxy", {}) or {}
@@ -409,6 +423,8 @@ class Profile:
                     "invert": m.invert, "scale": m.scale,
                     "clamp": m.clamp, "deadzone": m.deadzone,
                     "min": m.min, "max": m.max, "midpoint": m.midpoint,
+                    "pulseEnabled": m.pulse_enabled, "pulseMs": m.pulse_ms,
+                    "delayMs": m.delay_ms, "dedupe": m.dedupe,
                 } for name, m in self.channels.items()
             },
             # 连接设置与 Profile 一起保存；用户切 Profile 自动切连接配置
