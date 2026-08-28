@@ -45,6 +45,72 @@ AXIS_LABELS = {
     "R0": "扭转", "R1": "横滚", "R2": "俯仰",
 }
 
+# 软件版本号（显示在窗口标题）
+APP_VERSION = "1.0.1"
+
+
+class ToolTip:
+    """悬停提示：绑定控件后，鼠标悬停延迟显示说明文本（切换语言时随界面重建）。"""
+
+    _tip = None  # 全局唯一当前可见的提示窗口
+
+    def __init__(self, widget, text, delay_ms=300):
+        self.widget = widget
+        self.text = text
+        self._delay_ms = delay_ms
+        self._after_id = None
+        widget.bind("<Enter>", self._on_enter, add="+")
+        widget.bind("<Leave>", self._on_leave, add="+")
+        widget.bind("<ButtonPress>", self._on_leave, add="+")
+
+    def _on_enter(self, _e=None):
+        if self._after_id is not None:
+            self.widget.after_cancel(self._after_id)
+        self._after_id = self.widget.after(self._delay_ms, self._show)
+
+    def _on_leave(self, _e=None):
+        if self._after_id is not None:
+            try:
+                self.widget.after_cancel(self._after_id)
+            except Exception:
+                pass
+            self._after_id = None
+        if ToolTip._tip is not None:
+            try:
+                ToolTip._tip.destroy()
+            except Exception:
+                pass
+            ToolTip._tip = None
+
+    def _show(self):
+        self._after_id = None
+        self._on_leave()
+        try:
+            x = self.widget.winfo_rootx() + 12
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+            tip = tk.Toplevel(self.widget)
+            tip.wm_overrideredirect(True)
+            tip.wm_geometry(f"+{x}+{y}")
+            tip.attributes("-topmost", True)
+            lbl = tk.Label(tip, text=self.text, justify="left",
+                           background="#ffffe0", foreground="#212121",
+                           relief="solid", borderwidth=1, padx=8, pady=5,
+                           wraplength=420, font=("Microsoft YaHei", 9))
+            lbl.pack()
+            ToolTip._tip = tip
+        except tk.TclError:
+            pass  # 控件已销毁
+
+    @classmethod
+    def destroy_all(cls):
+        """销毁残留提示窗口（切换语言重建界面时调用）。"""
+        if cls._tip is not None:
+            try:
+                cls._tip.destroy()
+            except Exception:
+                pass
+            cls._tip = None
+
 
 class BridgeThread:
     """在独立线程 + 独立事件循环中运行 BridgeService（GUI 线程安全）。"""
@@ -109,11 +175,21 @@ class BridgeThread:
         if self.loop is not None and self.service is not None:
             self.loop.call_soon_threadsafe(self.service.release_estop)
 
+    def channel_levels(self) -> dict:
+        """读取各通道当前电平（跨线程读字典，供柱状图轮询）。"""
+        if self.service is not None:
+            try:
+                return self.service.channel_levels()
+            except Exception:
+                pass
+        return {}
+
 
 class GtpbGui:
 
     POLL_LOG_MS = 120
     POLL_STATUS_MS = 1000
+    POLL_METER_MS = 30
 
     def __init__(self, config: AppConfig, profile: Profile, profile_path: str = None,
                  log_path: str = None, settings: SettingsLoader = None):
@@ -131,6 +207,7 @@ class GtpbGui:
         self._check_port_conflict_on_startup()
         self.root.after(self.POLL_LOG_MS, self._poll_logs)
         self.root.after(self.POLL_STATUS_MS, self._poll_status)
+        self.root.after(self.POLL_METER_MS, self._poll_meter)
 
     # ---------------- 重建 UI（切语言时用） ----------------
 
@@ -138,10 +215,11 @@ class GtpbGui:
         """销毁并重新构建整个界面（用于切换语言）。"""
         # 停掉旧 bridge？不切语言时不应该运行；但保险起见先停
         # 实际上切语言时不应该在运行；GUI 状态保留，bridge 不重建
+        ToolTip.destroy_all()
         for w in self.root.winfo_children():
             w.destroy()
-        self.root.title(t("app_title"))
-        self.root.geometry("920x700")
+        self.root.title(f"{t('app_title')}  V{APP_VERSION}")
+        self.root.geometry("1080x760")
         self._build_menu()
         self._build_ui()
         self._map_hint_var = None  # type: ignore  # 重新构建后失效
@@ -211,14 +289,18 @@ class GtpbGui:
         self._v_backend = tk.StringVar(value=self._initial_profile.backend_url)
 
         fields = (
-            (t("lbl_listen"), self._v_listen, 14),
-            (t("lbl_ws_port"), self._v_ws, 8),
-            (t("lbl_tcp_port"), self._v_tcp, 8),
-            (t("lbl_backend"), self._v_backend, 26),
+            (t("lbl_listen"), self._v_listen, 14, "tip_listen"),
+            (t("lbl_ws_port"), self._v_ws, 8, "tip_ws_port"),
+            (t("lbl_tcp_port"), self._v_tcp, 8, "tip_tcp_port"),
+            (t("lbl_backend"), self._v_backend, 26, "tip_backend"),
         )
-        for col, (label, var, width) in enumerate(fields):
-            ttk.Label(top, text=label).grid(row=0, column=col * 2, sticky="e", padx=4, pady=3)
-            ttk.Entry(top, textvariable=var, width=width).grid(row=0, column=col * 2 + 1, padx=4)
+        for col, (label, var, width, tip_key) in enumerate(fields):
+            lb = ttk.Label(top, text=label)
+            lb.grid(row=0, column=col * 2, sticky="e", padx=4, pady=3)
+            ent = ttk.Entry(top, textvariable=var, width=width)
+            ent.grid(row=0, column=col * 2 + 1, padx=4)
+            ToolTip(lb, t(tip_key))
+            ToolTip(ent, t(tip_key))
         top.columnconfigure(7, weight=1)
 
         # Profile 操作栏
@@ -228,12 +310,18 @@ class GtpbGui:
         self._v_profile_path = tk.StringVar(value=self._profile_path)
         prof_entry = ttk.Entry(prof_bar, textvariable=self._v_profile_path, state="readonly", width=70)
         prof_entry.pack(side="left", padx=4, fill="x", expand=True)
-        ttk.Button(prof_bar, text=t("btn_load_profile"),
-                   command=self._on_load_profile).pack(side="left", padx=2)
-        ttk.Button(prof_bar, text=t("btn_save_profile"),
-                   command=self._on_save_profile).pack(side="left", padx=2)
-        ttk.Button(prof_bar, text=t("btn_save_profile_as"),
-                   command=self._on_save_profile_as).pack(side="left", padx=2)
+        btn_load = ttk.Button(prof_bar, text=t("btn_load_profile"),
+                              command=self._on_load_profile)
+        btn_load.pack(side="left", padx=2)
+        btn_save = ttk.Button(prof_bar, text=t("btn_save_profile"),
+                              command=self._on_save_profile)
+        btn_save.pack(side="left", padx=2)
+        btn_save_as = ttk.Button(prof_bar, text=t("btn_save_profile_as"),
+                                 command=self._on_save_profile_as)
+        btn_save_as.pack(side="left", padx=2)
+        ToolTip(btn_load, t("tip_load_profile"))
+        ToolTip(btn_save, t("tip_save_profile"))
+        ToolTip(btn_save_as, t("tip_save_as"))
 
         ctrl = ttk.Frame(self.root)
         ctrl.pack(fill="x", padx=8, pady=2)
@@ -245,6 +333,9 @@ class GtpbGui:
         self._btn_start.pack(side="left", padx=4)
         self._btn_stop.pack(side="left", padx=4)
         self._btn_estop.pack(side="right", padx=4)
+        ToolTip(self._btn_start, t("tip_start"))
+        ToolTip(self._btn_stop, t("tip_stop"))
+        ToolTip(self._btn_estop, t("tip_estop"))
 
         self._status_var = tk.StringVar(value=t("status_idle"))
         ttk.Label(self.root, textvariable=self._status_var).pack(anchor="w", padx=10, pady=2)
@@ -306,6 +397,16 @@ class GtpbGui:
                 m.enabled = True
             m.invert = bool(row["invert"].get())
             m.midpoint = bool(row["mid"].get())
+            m.dedupe = bool(row["dedupe"].get())
+            m.pulse_enabled = bool(row["pulse"].get())
+            try:
+                m.pulse_ms = int(row["pulse_ms"].get())
+            except (ValueError, TypeError):
+                pass
+            try:
+                m.delay_ms = int(row["delay"].get())
+            except (ValueError, TypeError):
+                pass
             for key, attr in (("scale", "scale"), ("min", "min"),
                               ("max", "max"), ("dz", "deadzone")):
                 try:
@@ -390,10 +491,14 @@ class GtpbGui:
         top.pack(fill="x", pady=(0, 4))
         self._v_mode = tk.StringVar(
             value=getattr(self._initial_profile, "virtual_mode", "passthrough"))
-        ttk.Radiobutton(top, text=t("mapping_passthrough"), variable=self._v_mode,
-                        value="passthrough").pack(side="left", padx=6)
-        ttk.Radiobutton(top, text=t("mapping_osr6"), variable=self._v_mode,
-                        value="osr6").pack(side="left", padx=6)
+        rb_passthrough = ttk.Radiobutton(top, text=t("mapping_passthrough"),
+                                         variable=self._v_mode, value="passthrough")
+        rb_passthrough.pack(side="left", padx=6)
+        rb_osr6 = ttk.Radiobutton(top, text=t("mapping_osr6"), variable=self._v_mode,
+                                  value="osr6")
+        rb_osr6.pack(side="left", padx=6)
+        ToolTip(rb_passthrough, t("tip_mode_passthrough"))
+        ToolTip(rb_osr6, t("tip_mode_osr6"))
         ttk.Label(top, text=t("mapping_hint_edit"),
                   foreground="#546e7a").pack(side="right", padx=6)
         self._map_hint = tk.StringVar(value=t("mapping_hint_empty"))
@@ -402,17 +507,25 @@ class GtpbGui:
 
         headers = (t("col_channel"), t("col_enabled"), t("col_actuator"),
                    t("col_invert"), t("col_scale"), t("col_min"), t("col_max"),
-                   t("col_midpoint"), t("col_deadzone"))
+                   t("col_midpoint"), t("col_deadzone"),
+                   t("col_dedupe"), t("col_pulse"), t("col_pulse_ms"), t("col_delay_ms"))
+        header_tips = ("tip_channel", "tip_enabled", "tip_actuator", "tip_invert",
+                       "tip_scale", "tip_min", "tip_max", "tip_midpoint",
+                       "tip_deadzone", "tip_dedupe", "tip_pulse", "tip_pulse_ms",
+                       "tip_delay_ms")
         grid = ttk.Frame(parent)
         grid.pack(fill="x")
-        for col, text in enumerate(headers):
-            ttk.Label(grid, text=text).grid(row=0, column=col, padx=3, pady=2)
+        for col, (text, tip_key) in enumerate(zip(headers, header_tips)):
+            lb = ttk.Label(grid, text=text)
+            lb.grid(row=0, column=col, padx=3, pady=2)
+            ToolTip(lb, t(tip_key))
 
         self._map_rows = {}
         for row, ch in enumerate(CHANNELS, start=1):
             m = self._initial_profile.channels.get(ch.value) or ChannelMapping()
-            ttk.Label(grid, text=f"{ch.value} {AXIS_LABELS.get(ch.value, '')}").grid(
-                row=row, column=0, sticky="w", padx=3)
+            ch_label = ttk.Label(grid, text=f"{ch.value} {AXIS_LABELS.get(ch.value, '')}")
+            ch_label.grid(row=row, column=0, sticky="w", padx=3)
+            ToolTip(ch_label, t("tip_channel"))
             v_enabled = tk.BooleanVar(value=m.enabled)
             v_actuator = tk.StringVar()
             v_invert = tk.BooleanVar(value=m.invert)
@@ -421,22 +534,65 @@ class GtpbGui:
             v_max = tk.StringVar(value=str(m.max))
             v_mid = tk.BooleanVar(value=m.midpoint)
             v_dz = tk.StringVar(value=str(m.deadzone))
-            ttk.Checkbutton(grid, variable=v_enabled).grid(row=row, column=1)
-            combo = ttk.Combobox(grid, textvariable=v_actuator, width=20, state="readonly")
+            v_dedupe = tk.BooleanVar(value=m.dedupe)
+            v_pulse = tk.BooleanVar(value=m.pulse_enabled)
+            v_pulse_ms = tk.StringVar(value=str(m.pulse_ms))
+            v_delay = tk.StringVar(value=str(m.delay_ms))
+            cb_enabled = ttk.Checkbutton(grid, variable=v_enabled)
+            cb_enabled.grid(row=row, column=1)
+            combo = ttk.Combobox(grid, textvariable=v_actuator, width=18, state="readonly")
             combo.grid(row=row, column=2, padx=3)
-            ttk.Checkbutton(grid, variable=v_invert).grid(row=row, column=3)
-            ttk.Entry(grid, textvariable=v_scale, width=6).grid(row=row, column=4, padx=3)
-            ttk.Entry(grid, textvariable=v_min, width=5).grid(row=row, column=5, padx=3)
-            ttk.Entry(grid, textvariable=v_max, width=5).grid(row=row, column=6, padx=3)
-            ttk.Checkbutton(grid, variable=v_mid).grid(row=row, column=7)
-            ttk.Entry(grid, textvariable=v_dz, width=5).grid(row=row, column=8, padx=3)
+            cb_invert = ttk.Checkbutton(grid, variable=v_invert)
+            cb_invert.grid(row=row, column=3)
+            e_scale = ttk.Entry(grid, textvariable=v_scale, width=6)
+            e_scale.grid(row=row, column=4, padx=3)
+            e_min = ttk.Entry(grid, textvariable=v_min, width=5)
+            e_min.grid(row=row, column=5, padx=3)
+            e_max = ttk.Entry(grid, textvariable=v_max, width=5)
+            e_max.grid(row=row, column=6, padx=3)
+            cb_mid = ttk.Checkbutton(grid, variable=v_mid)
+            cb_mid.grid(row=row, column=7)
+            e_dz = ttk.Entry(grid, textvariable=v_dz, width=5)
+            e_dz.grid(row=row, column=8, padx=3)
+            cb_dedupe = ttk.Checkbutton(grid, variable=v_dedupe)
+            cb_dedupe.grid(row=row, column=9)
+            cb_pulse = ttk.Checkbutton(grid, variable=v_pulse)
+            cb_pulse.grid(row=row, column=10)
+            e_pulse_ms = ttk.Entry(grid, textvariable=v_pulse_ms, width=6)
+            e_pulse_ms.grid(row=row, column=11, padx=3)
+            e_delay = ttk.Entry(grid, textvariable=v_delay, width=6)
+            e_delay.grid(row=row, column=12, padx=3)
+            ToolTip(cb_enabled, t("tip_enabled"))
+            ToolTip(combo, t("tip_actuator"))
+            ToolTip(cb_invert, t("tip_invert"))
+            ToolTip(e_scale, t("tip_scale"))
+            ToolTip(e_min, t("tip_min"))
+            ToolTip(e_max, t("tip_max"))
+            ToolTip(cb_mid, t("tip_midpoint"))
+            ToolTip(e_dz, t("tip_deadzone"))
+            ToolTip(cb_dedupe, t("tip_dedupe"))
+            ToolTip(cb_pulse, t("tip_pulse"))
+            ToolTip(e_pulse_ms, t("tip_pulse_ms"))
+            ToolTip(e_delay, t("tip_delay_ms"))
             self._map_rows[ch.value] = {
                 "enabled": v_enabled, "actuator": v_actuator, "combo": combo,
                 "invert": v_invert, "scale": v_scale, "min": v_min,
                 "max": v_max, "mid": v_mid, "dz": v_dz,
+                "dedupe": v_dedupe, "pulse": v_pulse,
+                "pulse_ms": v_pulse_ms, "delay": v_delay,
             }
         self._actuator_items = []
         self._load_mapping_rows(self._initial_profile)
+
+        # 信号柱状图（MFP 频谱风格，嵌入映射页底部）
+        meter = ttk.LabelFrame(parent, text=t("meter_title"))
+        meter.pack(fill="x", pady=(8, 0))
+        self._meter_canvas = tk.Canvas(
+            meter, height=130, bg="#fafafa",
+            highlightthickness=1, highlightbackground="#cccccc")
+        self._meter_canvas.pack(fill="x", padx=4, pady=4)
+        ToolTip(self._meter_canvas, t("tip_meter"))
+        self._draw_meter({})
 
     def _display_for(self, m: ChannelMapping) -> str:
         for display, a_type, motor in self._actuator_items:
@@ -460,6 +616,10 @@ class GtpbGui:
             row["max"].set(str(m.max))
             row["mid"].set(m.midpoint)
             row["dz"].set(str(m.deadzone))
+            row["dedupe"].set(m.dedupe)
+            row["pulse"].set(m.pulse_enabled)
+            row["pulse_ms"].set(str(m.pulse_ms))
+            row["delay"].set(str(m.delay_ms))
             row["actuator"].set(self._display_for(m))
         self._v_mode.set(getattr(profile, "virtual_mode", "passthrough"))
 
@@ -622,6 +782,45 @@ class GtpbGui:
                 self._refresh_devices(st["devices"])
                 self._refresh_actuator_choices(st["devices"])
         self.root.after(self.POLL_STATUS_MS, self._poll_status)
+
+    # ---------------- 信号柱状图 ----------------
+
+    def _poll_meter(self):
+        levels = self._bridge.channel_levels() if self._bridge is not None else {}
+        self._draw_meter(levels)
+        self.root.after(self.POLL_METER_MS, self._poll_meter)
+
+    def _channel_color(self, ch: str) -> str:
+        m = self._initial_profile.channels.get(ch)
+        if m is None:
+            return "#90a4ae"
+        return {"Vibrate": "#1565c0", "Rotate": "#e65100",
+                "Linear": "#2e7d32"}.get(m.target, "#90a4ae")
+
+    def _draw_meter(self, levels: dict):
+        c = getattr(self, "_meter_canvas", None)
+        if c is None:
+            return
+        c.delete("all")
+        w = max(c.winfo_width(), 120)
+        h = 112
+        n = len(CHANNELS)
+        if n == 0:
+            return
+        gap = 14
+        bw = max((w - gap * (n + 1)) / n, 24)
+        base = h - 12
+        for i, ch in enumerate(CHANNELS):
+            x0 = gap + i * (bw + gap)
+            v = max(0.0, min(1.0, float(levels.get(ch.value, 0.0))))
+            bh = max(3, int(v * (h - 30)))
+            y0 = base - bh
+            color = self._channel_color(ch.value)
+            c.create_rectangle(x0, y0, x0 + bw, base, fill=color, outline="")
+            c.create_text(x0 + bw / 2, base + 10, text=ch.value,
+                          font=("Microsoft YaHei", 8))
+            c.create_text(x0 + bw / 2, y0 - 9, text=f"{v:.2f}",
+                          font=("Microsoft YaHei", 7))
 
     def _refresh_devices(self, devices):
         lines = [f"[{d['index']}] {d['name']}   能力: {', '.join(d['capabilities']) or '无'}"
