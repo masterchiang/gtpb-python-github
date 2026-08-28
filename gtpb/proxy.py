@@ -14,6 +14,7 @@ from .config import AppConfig, Profile
 from .logs import LogManager
 from .mapping import MappingEngine
 from .models import Channel
+from .pulse import PulseEngine
 from .safety import EmergencyStop
 from .transform import CommandDispatcher, TransformEngine
 
@@ -147,6 +148,7 @@ class BridgeService:
         self.dispatcher = CommandDispatcher(
             self._send_device_messages, self.transform, self.estop,
             self.log, config.safety.command_min_interval_ms)
+        self.pulse = PulseEngine(self.dispatcher, lambda: self.profile, self.log)
         self.sessions = {}
         self._servers = []
         self._tasks: List[asyncio.Task] = []
@@ -165,6 +167,8 @@ class BridgeService:
         self.log.sys_info(f"GTPB 启动 (Profile={self.profile.name})")
         self._tasks.append(asyncio.create_task(
             self._supervise(self.dispatcher.run(), "dispatcher")))
+        self._tasks.append(asyncio.create_task(
+            self._supervise(self.pulse.run(), "pulse")))
         self.backend.start()
         if proxy.ws_port > 0:
             # 注意：不设置 subprotocols —— 游戏客户端（如 MultiFunPlayer）通常不携带
@@ -216,6 +220,7 @@ class BridgeService:
             await session.close()
         self.sessions.clear()
         self.dispatcher.stop()
+        self.pulse.stop()
         for t in self._tasks:
             t.cancel()
         if self._tasks:
@@ -354,7 +359,7 @@ class BridgeService:
                 continue
             n.meta.update(meta)
             cmds.append(n)
-        self.dispatcher.submit(cmds)
+        self.pulse.process_cmds(cmds)
 
     async def _send_device_messages(self, messages):
         await self.backend.send_messages(messages)
@@ -427,6 +432,7 @@ class BridgeService:
 
     def _on_estop_engaged(self, reason: str):
         self.dispatcher.clear()
+        self.pulse.clear()
         self.log.sys_error(f"!!! 紧急停止触发 ({reason})：所有设备指令被拦截 !!!")
         try:
             loop = asyncio.get_running_loop()
@@ -449,6 +455,10 @@ class BridgeService:
         self.log.sys_info("急停已释放，恢复正常指令通道")
 
     # ---------------- 状态 ----------------
+
+    def channel_levels(self) -> dict:
+        """各通道当前电平（供 GUI 信号柱状图轮询）。"""
+        return self.pulse.channel_levels()
 
     def status(self) -> dict:
         devices = []
