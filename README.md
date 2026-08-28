@@ -16,6 +16,11 @@ Game (MultiFunPlayer, etc.) → GTPB (ws://127.0.0.1:12345, Buttplug v3)
 - **Dual WebSocket + TCP proxy** — bidirectional communication between games and Intiface Central
 - **Channel mapping** — flexible mapping of game channels to hardware actuators
 - **OSR6 six-axis mode** — maps game OSR6 six-axis output to real hardware (L0 stroke / L1 in-out / L2 left-right / R0 twist / R1 roll / R2 pitch)
+- **Stroke simulation (Pulse / V1.0.1)** — simulates stroke-style reciprocating motion for "velocity-type piston" devices (e.g. TryFun Meta2): on any non-zero signal the device pushes forward, then a delayed zero resets it, approximating OSR series reciprocation. Per-channel, with adjustable reset delay (`pulse_ms`)
+- **Channel delay (V1.0.1)** — per-channel send delay, positive or negative, for calibrating multi-axis signal timing (negative delays are relative to the most-negative value as baseline)
+- **Dedupe / send-on-change (V1.0.1)** — identical consecutive values are not forwarded; only value changes are sent, preventing repeated auto-triggering during stroke simulation
+- **Signal meter (V1.0.1)** — real-time live bar chart at the bottom of the mapping page, color-coded by actuator type (Vibrate blue / Rotate orange / Linear green), ~33fps, showing current values on top
+- **Tooltip (V1.0.1)** — hover over any setting (connection, mapping, buttons, meter) to show a delayed explanation of what it does
 - **Emergency stop** — one-click interception of all device commands, sends StopAllDevices
 - **Multi-language support** — Simplified Chinese, English, 日本語, Deutsch, Français, Русский, Español, Português (Brasil), 한국어
 - **Profile management** — load, save, save-as for different connection configs and channel mapping schemes
@@ -80,6 +85,7 @@ gtpb-python/
 │   ├── mapping.py           # Channel mapping engine
 │   ├── models.py            # Data models
 │   ├── proxy.py             # Bridge service core
+│   ├── pulse.py             # Stroke simulation + channel delay + level sampling (V1.0.1)
 │   ├── safety.py            # Safety mechanism (emergency stop)
 │   └── transform.py         # Value transforms
 ├── profiles/default.json    # Default profile
